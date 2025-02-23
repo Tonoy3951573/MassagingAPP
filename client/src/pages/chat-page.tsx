@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { LogOut, Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { User, Conversation } from '@shared/schema';
+import Avatar from '@/components/ui/avatar'; // Assumed import path
+import AvatarFallback from '@/components/ui/avatar-fallback'; // Assumed import path
+
 
 export default function ChatPage() {
   const { user, logoutMutation } = useAuth();
@@ -44,56 +47,64 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Private Messenger</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-muted-foreground">
-              Logged in as {user?.username}
-            </span>
+      <div className="grid grid-cols-12 h-screen">
+        {/* Sidebar */}
+        <div className="col-span-3 bg-muted border-r">
+          <div className="p-4 bg-primary-foreground border-b flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Avatar>
+                <AvatarFallback>
+                  {user?.username.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="font-medium">{user?.username}</span>
+            </div>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={() => logoutMutation.mutate()}
               disabled={logoutMutation.isPending}
             >
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
+              <LogOut className="h-5 w-5" />
             </Button>
           </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-3">
-            <div className="space-y-6">
-              <ConversationList
-                onSelectConversation={setSelectedConversation}
-                selectedConversationId={selectedConversation?.id}
-              />
-              <UserList onSelectUser={handleUserSelect} />
-            </div>
+          <div className="space-y-4 p-4">
+            <ConversationList
+              onSelectConversation={setSelectedConversation}
+              selectedConversationId={selectedConversation?.id}
+            />
+            <UserList onSelectUser={handleUserSelect} />
           </div>
-          <div className="col-span-9 space-y-4">
-            {selectedConversation ? (
-              <>
+        </div>
+
+        {/* Chat Area */}
+        <div className="col-span-9 flex flex-col">
+          {selectedConversation ? (
+            <>
+              <div className="p-4 bg-primary-foreground border-b">
+                <h2 className="text-lg font-semibold">
+                  {selectedConversation.name || 'Private Chat'}
+                </h2>
+              </div>
+              <div className="flex-1 overflow-hidden bg-chat-pattern">
                 {users && <MessageList users={users} conversationId={selectedConversation.id} />}
+              </div>
+              <div className="p-4 bg-background border-t">
                 <MessageInput
                   conversationId={selectedConversation.id}
                   onMessageSent={() =>
                     queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedConversation.id] })
                   }
                 />
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-[calc(100vh-200px)] text-muted-foreground">
-                Select a conversation or start a new one
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Select a conversation or start a new one
+            </div>
+          )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

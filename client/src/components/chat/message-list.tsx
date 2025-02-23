@@ -101,7 +101,7 @@ export function MessageList({ users, conversationId }: MessageListProps) {
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-300px)]">
+    <ScrollArea className="h-[calc(100vh-300px)] bg-gradient-to-b from-background to-muted">
       <div className="space-y-4 p-4">
         {messages?.map((message) => (
           <div
@@ -117,23 +117,23 @@ export function MessageList({ users, conversationId }: MessageListProps) {
                 </AvatarFallback>
               </Avatar>
             )}
-            <Card
-              className={`max-w-[70%] ${
+            <div
+              className={`max-w-[70%] rounded-lg p-4 ${
                 message.senderId === currentUser?.id
-                  ? 'bg-primary text-primary-foreground'
-                  : ''
+                  ? 'bg-primary text-primary-foreground rounded-br-none'
+                  : 'bg-card rounded-bl-none'
               }`}
             >
-              <CardContent className="p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium">{getSender(message.senderId)}</span>
-                  <span className="text-xs opacity-70">
-                    {format(new Date(message.timestamp), 'HH:mm')}
-                  </span>
-                </div>
-                {renderMessageContent(message)}
-              </CardContent>
-            </Card>
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-medium text-sm">
+                  {getSender(message.senderId)}
+                </span>
+                <span className="text-xs opacity-70">
+                  {format(new Date(message.timestamp), 'HH:mm')}
+                </span>
+              </div>
+              {renderMessageContent(message)}
+            </div>
           </div>
         ))}
       </div>
