@@ -9,9 +9,7 @@ import { Button } from '@/components/ui/button';
 import { LogOut, Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { User, Conversation } from '@shared/schema';
-import Avatar from '@/components/ui/avatar'; // Assumed import path
-import AvatarFallback from '@/components/ui/avatar-fallback'; // Assumed import path
-
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export default function ChatPage() {
   const { user, logoutMutation } = useAuth();

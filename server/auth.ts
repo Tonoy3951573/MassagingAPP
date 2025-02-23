@@ -14,6 +14,16 @@ declare global {
   }
 }
 
+// Define types for authentication errors
+interface AuthError extends Error {
+  status?: number;
+  statusCode?: number;
+}
+
+interface Info {
+  message: string;
+}
+
 const scryptAsync = promisify(scrypt);
 
 async function hashPassword(password: string) {
@@ -40,11 +50,12 @@ export function setupAuth(app: Express) {
     saveUninitialized: false,
     store: storage.sessionStore,
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: false, // Set to false in development to work with HTTP
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       sameSite: "lax"
-    }
+    },
+    name: 'connect.sid' // Explicitly set the cookie name
   };
 
   app.set("trust proxy", 1);
@@ -53,7 +64,7 @@ export function setupAuth(app: Express) {
   app.use(passport.session());
 
   passport.use(
-    new LocalStrategy(async (username, password, done) => {
+    new LocalStrategy(async (username: string, password: string, done) => {
       try {
         const user = await storage.getUserByUsername(username);
         log(`Login attempt for user: ${username}, found: ${!!user}`, "auth");
@@ -63,7 +74,7 @@ export function setupAuth(app: Express) {
         return done(null, user);
       } catch (error) {
         log(`Login error: ${error}`, "auth");
-        return done(error);
+        return done(error as Error);
       }
     }),
   );
@@ -83,7 +94,7 @@ export function setupAuth(app: Express) {
       done(null, user);
     } catch (error) {
       log(`Deserialize error: ${error}`, "auth");
-      done(error);
+      done(error as Error);
     }
   });
 
@@ -117,7 +128,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", (err: AuthError | null, user: SelectUser | false, info: Info) => {
       if (err) {
         log(`Login error: ${err}`, "auth");
         return next(err);
@@ -139,6 +150,7 @@ export function setupAuth(app: Express) {
 
   app.post("/api/logout", (req, res, next) => {
     const userId = req.user?.id;
+    log(`Logout attempt for user: ${userId}`, "auth");
     req.logout((err) => {
       if (err) {
         log(`Logout error: ${err}`, "auth");
@@ -152,7 +164,7 @@ export function setupAuth(app: Express) {
   app.get("/api/user", (req, res) => {
     log(`Auth check - isAuthenticated: ${req.isAuthenticated()}, user: ${req.user?.id}`, "auth");
     if (!req.isAuthenticated()) {
-      return res.sendStatus(401);
+      return res.status(401).json({ message: "Not authenticated" });
     }
     res.json(req.user);
   });

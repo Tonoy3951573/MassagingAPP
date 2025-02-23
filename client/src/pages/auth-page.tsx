@@ -7,16 +7,33 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertUserSchema } from "@shared/schema";
 import { Redirect } from "wouter";
+import { z } from "zod";
+
+// Define a more specific schema for login/register
+const authSchema = insertUserSchema.pick({
+  username: true,
+  password: true,
+});
+
+type AuthData = z.infer<typeof authSchema>;
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
 
-  const loginForm = useForm({
-    resolver: zodResolver(insertUserSchema),
+  const loginForm = useForm<AuthData>({
+    resolver: zodResolver(authSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+    },
   });
 
-  const registerForm = useForm({
-    resolver: zodResolver(insertUserSchema),
+  const registerForm = useForm<AuthData>({
+    resolver: zodResolver(authSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+    },
   });
 
   if (user) {
@@ -37,7 +54,7 @@ export default function AuthPage() {
               <TabsTrigger value="login">Login</TabsTrigger>
               <TabsTrigger value="register">Register</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="login">
               <form onSubmit={loginForm.handleSubmit((data) => loginMutation.mutate(data))}>
                 <div className="space-y-4">

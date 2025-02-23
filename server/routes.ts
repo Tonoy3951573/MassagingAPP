@@ -20,7 +20,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
   const httpServer = createServer(app);
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({ 
+    server: httpServer, 
+    path: '/ws',
+    verifyClient: false // Disable built-in verification as we handle it ourselves
+  });
 
   // Authenticate WebSocket connections using session
   wss.on('connection', async (ws, req) => {
@@ -29,7 +33,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!req.headers.cookie) {
         log('No cookie found in WebSocket request', 'websocket');
-        ws.close();
+        ws.close(1008, 'Authentication required');
         return;
       }
 
@@ -39,7 +43,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!signedSessionId || !signedSessionId.startsWith('s:')) {
         log('Invalid session cookie format', 'websocket');
-        ws.close();
+        ws.close(1008, 'Invalid session');
         return;
       }
 
@@ -48,7 +52,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!sessionId) {
         log('Failed to unsign session cookie', 'websocket');
-        ws.close();
+        ws.close(1008, 'Invalid session signature');
         return;
       }
 
@@ -63,14 +67,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!session?.passport?.user) {
         log('No user found in session', 'websocket');
-        ws.close();
+        ws.close(1008, 'No user in session');
         return;
       }
 
       const user = await storage.getUser(session.passport.user);
       if (!user) {
         log(`User not found for ID: ${session.passport.user}`, 'websocket');
-        ws.close();
+        ws.close(1008, 'User not found');
         return;
       }
 
@@ -89,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error) {
       log(`WebSocket connection error: ${error}`, 'websocket');
-      ws.close();
+      ws.close(1011, 'Internal server error');
     }
   });
 
