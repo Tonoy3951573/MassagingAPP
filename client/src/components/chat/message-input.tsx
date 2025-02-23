@@ -24,13 +24,16 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
     if (!content.trim() && type === 'text') return;
 
     try {
-      const res = await apiRequest('POST', '/api/messages', {
+      const messageData = {
         type,
         content,
         conversationId,
         metadata: metadata || {}
-      });
+      };
 
+      console.log('Sending message:', messageData); // Debug log
+
+      const res = await apiRequest('POST', '/api/messages', messageData);
       await res.json();
       setMessage('');
       onMessageSent();
@@ -97,7 +100,9 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
       {showCodeEditor ? (
         <CodeEditor
           onSubmit={(code, language) => {
-            handleSendMessage('code', code, { language });
+            const metadata = { language };
+            console.log('Sending code with metadata:', { code, metadata }); // Debug log
+            handleSendMessage('code', code, metadata);
             setShowCodeEditor(false);
           }}
           onCancel={() => setShowCodeEditor(false)}

@@ -6,10 +6,19 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { Loader2 } from 'lucide-react';
+import CodeMirror from '@uiw/react-codemirror';
+import { javascript } from '@codemirror/lang-javascript';
+import { python } from '@codemirror/lang-python';
 
 type MessageListProps = {
   users: User[];
   conversationId: number;
+};
+
+const languageExtensions = {
+  javascript: javascript(),
+  python: python(),
+  text: [],
 };
 
 export function MessageList({ users, conversationId }: MessageListProps) {
@@ -43,15 +52,38 @@ export function MessageList({ users, conversationId }: MessageListProps) {
           </audio>
         ) : null;
       case 'code':
-        const language = message.metadata?.language || 'text';
-        return (
-          <pre className="bg-muted p-4 rounded-lg overflow-x-auto">
-            <code>{message.content}</code>
-            <div className="text-xs text-muted-foreground mt-2">
-              Language: {language}
+        try {
+          const language = (message.metadata?.language || 'text') as keyof typeof languageExtensions;
+          console.log('Rendering code message:', { content: message.content, language, metadata: message.metadata });
+
+          return (
+            <div className="space-y-2">
+              <CodeMirror
+                value={message.content || ''}
+                height="200px"
+                readOnly
+                theme="light"
+                extensions={[languageExtensions[language]]}
+                className="border rounded-md"
+              />
+              <div className="text-xs text-muted-foreground">
+                Language: {message.metadata?.language || 'text'}
+              </div>
             </div>
-          </pre>
-        );
+          );
+        } catch (error) {
+          console.error('Error rendering code message:', error);
+          return (
+            <div className="space-y-2">
+              <pre className="bg-muted p-4 rounded-lg overflow-x-auto">
+                <code>{message.content}</code>
+              </pre>
+              <div className="text-xs text-muted-foreground">
+                Failed to render with syntax highlighting
+              </div>
+            </div>
+          );
+        }
       default:
         return null;
     }
