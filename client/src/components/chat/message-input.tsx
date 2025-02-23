@@ -21,16 +21,17 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSendMessage = async (type: 'text' | 'image' | 'voice' | 'code', content: string, metadata?: any) => {
-    const formData = new FormData();
-    formData.append('type', type);
-    formData.append('content', content);
-    formData.append('conversationId', conversationId.toString());
-    if (metadata) {
-      formData.append('metadata', JSON.stringify(metadata));
-    }
+    if (!content.trim() && type === 'text') return;
 
     try {
-      await apiRequest('POST', '/api/messages', formData);
+      const res = await apiRequest('POST', '/api/messages', {
+        type,
+        content,
+        conversationId,
+        metadata,
+      });
+
+      await res.json();
       setMessage('');
       onMessageSent();
     } catch (error) {
@@ -39,6 +40,17 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
         description: (error as Error).message,
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        handleSendMessage('image', reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -77,17 +89,6 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-    }
-  };
-
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        handleSendMessage('image', reader.result as string);
-      };
-      reader.readAsDataURL(file);
     }
   };
 

@@ -20,11 +20,26 @@ export default function ChatPage() {
     queryKey: ['/api/users'],
   });
 
+  const { data: conversations } = useQuery<Conversation[]>({
+    queryKey: ['/api/conversations'],
+  });
+
   useEffect(() => {
     if (lastMessage?.type === 'new_message') {
-      queryClient.invalidateQueries({ queryKey: ['/api/messages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedConversation?.id] });
     }
-  }, [lastMessage, queryClient]);
+  }, [lastMessage, queryClient, selectedConversation?.id]);
+
+  const handleUserSelect = (selectedUser: User) => {
+    // Find existing private conversation with this user
+    const existingConversation = conversations?.find(conv => 
+      conv.type === 'private' && conv.members?.includes(selectedUser.id)
+    );
+
+    if (existingConversation) {
+      setSelectedConversation(existingConversation);
+    }
+  };
 
   if (isLoadingUsers) {
     return (
@@ -63,7 +78,7 @@ export default function ChatPage() {
                 onSelectConversation={setSelectedConversation}
                 selectedConversationId={selectedConversation?.id}
               />
-              <UserList />
+              <UserList onSelectUser={handleUserSelect} />
             </div>
           </div>
           <div className="col-span-9 space-y-4">
@@ -73,7 +88,7 @@ export default function ChatPage() {
                 <MessageInput
                   conversationId={selectedConversation.id}
                   onMessageSent={() =>
-                    queryClient.invalidateQueries({ queryKey: ['/api/messages'] })
+                    queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedConversation.id] })
                   }
                 />
               </>
