@@ -106,6 +106,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const { name, type, userIds } = req.body;
 
+    // For private chats, check if a conversation already exists
+    if (type === 'private' && userIds.length === 1) {
+      const existingConversations = await storage.getUserConversations(req.user.id);
+
+      for (const conv of existingConversations) {
+        if (conv.type === 'private') {
+          const members = await storage.getConversationMembers(conv.id);
+          if (members.some(member => member.id === userIds[0])) {
+            return res.json(conv);
+          }
+        }
+      }
+    }
+
     const conversation = await storage.createConversation(name, type, req.user.id);
 
     // Add selected users to the conversation

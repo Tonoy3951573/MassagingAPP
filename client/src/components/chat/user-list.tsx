@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { User } from '@shared/schema';
+import { User, Conversation } from '@shared/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -8,13 +8,18 @@ import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/use-auth';
 
 type UserListProps = {
-  onSelectUser?: (user: User) => void;
+  onSelectUser?: (user: User, conversation: Conversation) => void;
 };
 
 export function UserList({ onSelectUser }: UserListProps) {
   const { data: users } = useQuery<User[]>({
     queryKey: ['/api/users'],
   });
+
+  const { data: conversations } = useQuery<Conversation[]>({
+    queryKey: ['/api/conversations'],
+  });
+
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
 
@@ -32,10 +37,14 @@ export function UserList({ onSelectUser }: UserListProps) {
     }
   });
 
-  const handleUserClick = async (user: User) => {
+  const handleUserClick = async (selectedUser: User) => {
     if (onSelectUser) {
-      await createPrivateChat.mutate(user.id);
-      onSelectUser(user);
+      try {
+        const result = await createPrivateChat.mutateAsync(selectedUser.id);
+        onSelectUser(selectedUser, result);
+      } catch (error) {
+        console.error('Failed to create/get conversation:', error);
+      }
     }
   };
 

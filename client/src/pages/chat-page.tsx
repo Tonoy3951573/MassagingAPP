@@ -30,15 +30,8 @@ export default function ChatPage() {
     }
   }, [lastMessage, queryClient, selectedConversation?.id]);
 
-  const handleUserSelect = (selectedUser: User) => {
-    // Find existing private conversation with this user
-    const existingConversation = conversations?.find(conv => 
-      conv.type === 'private' && conv.members?.includes(selectedUser.id)
-    );
-
-    if (existingConversation) {
-      setSelectedConversation(existingConversation);
-    }
+  const handleUserSelect = (selectedUser: User, conversation: Conversation) => {
+    setSelectedConversation(conversation);
   };
 
   if (isLoadingUsers) {
