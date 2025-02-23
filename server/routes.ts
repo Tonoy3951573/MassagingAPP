@@ -4,7 +4,6 @@ import { WebSocketServer, WebSocket } from "ws";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import multer from "multer";
-import { insertMessageSchema } from "@shared/schema";
 import { parse as parseCookie } from "cookie";
 import signature from "cookie-signature";
 import { log } from "./vite";
@@ -94,7 +93,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Rest of your routes...
   app.get("/api/conversations", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const conversations = await storage.getUserConversations(req.user.id);
@@ -104,39 +102,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/conversations", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
 
-    const { name, type, userIds } = req.body;
+    try {
+      const { name, type, userIds } = req.body;
+      log(`Creating conversation: type=${type}, userIds=${userIds.join(',')}`, 'express');
 
-    // For private chats, check if a conversation already exists
-    if (type === 'private' && userIds.length === 1) {
-      const existingConversations = await storage.getUserConversations(req.user.id);
+      // For private chats, check if a conversation already exists
+      if (type === 'private' && userIds.length === 1) {
+        const existingConversations = await storage.getUserConversations(req.user.id);
 
-      for (const conv of existingConversations) {
-        if (conv.type === 'private') {
-          const members = await storage.getConversationMembers(conv.id);
-          if (members.some(member => member.id === userIds[0])) {
-            return res.json(conv);
+        for (const conv of existingConversations) {
+          if (conv.type === 'private') {
+            const members = await storage.getConversationMembers(conv.id);
+            if (members.some(member => member.id === userIds[0])) {
+              log(`Found existing private chat: ${conv.id}`, 'express');
+              return res.json(conv);
+            }
           }
         }
       }
+
+      const conversation = await storage.createConversation(name, type, req.user.id);
+      log(`Created new conversation: ${conversation.id}`, 'express');
+
+      // Add selected users to the conversation
+      for (const userId of userIds) {
+        await storage.addUserToConversation(userId, conversation.id);
+        log(`Added user ${userId} to conversation ${conversation.id}`, 'express');
+      }
+
+      res.status(201).json(conversation);
+    } catch (error) {
+      log(`Error creating conversation: ${error}`, 'express');
+      res.status(500).json({ message: 'Error creating conversation' });
     }
-
-    const conversation = await storage.createConversation(name, type, req.user.id);
-
-    // Add selected users to the conversation
-    for (const userId of userIds) {
-      await storage.addUserToConversation(userId, conversation.id);
-    }
-
-    res.status(201).json(conversation);
   });
 
   app.get("/api/messages", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    const conversationId = Number(req.query.conversationId);
-    if (!conversationId) return res.status(400).send("Conversation ID required");
 
-    const messages = await storage.getMessages(conversationId);
-    res.json(messages);
+    try {
+      const conversationId = Number(req.query.conversationId);
+      if (!conversationId) {
+        return res.status(400).json({ message: "Conversation ID required" });
+      }
+
+      // Verify user is member of the conversation
+      const members = await storage.getConversationMembers(conversationId);
+      if (!members.some(member => member.id === req.user!.id)) {
+        return res.status(403).json({ message: "Not a member of this conversation" });
+      }
+
+      const messages = await storage.getMessages(conversationId);
+      res.json(messages);
+    } catch (error) {
+      log(`Error fetching messages: ${error}`, 'express');
+      res.status(500).json({ message: 'Error fetching messages' });
+    }
   });
 
   app.get("/api/users", async (req, res) => {
@@ -145,30 +166,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(users);
   });
 
-  app.post("/api/messages", upload.single('file'), async (req, res) => {
+  app.post("/api/messages", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
 
-    const messageData = {
-      senderId: req.user.id,
-      conversationId: Number(req.body.conversationId),
-      content: req.body.content || null,
-      type: req.body.type,
-      metadata: req.body.metadata ? JSON.parse(req.body.metadata) : null,
-      timestamp: new Date()
-    };
+    try {
+      const messageData = {
+        senderId: req.user.id,
+        conversationId: Number(req.body.conversationId),
+        content: req.body.content || null,
+        type: req.body.type,
+        metadata: req.body.metadata ? JSON.parse(JSON.stringify(req.body.metadata)) : null,
+        timestamp: new Date()
+      };
 
-    const message = await storage.createMessage(messageData);
-
-    // Broadcast to all connected clients in the conversation
-    const members = await storage.getConversationMembers(messageData.conversationId);
-    members.forEach((member) => {
-      const connection = activeConnections.get(member.id);
-      if (connection?.readyState === WebSocket.OPEN) {
-        connection.send(JSON.stringify({ type: 'new_message', data: message }));
+      // Verify user is member of the conversation
+      const members = await storage.getConversationMembers(messageData.conversationId);
+      if (!members.some(member => member.id === req.user!.id)) {
+        return res.status(403).json({ message: "Not a member of this conversation" });
       }
-    });
 
-    res.json(message);
+      const message = await storage.createMessage(messageData);
+      log(`Created message in conversation ${messageData.conversationId}`, 'express');
+
+      // Broadcast to all connected clients in the conversation
+      members.forEach((member) => {
+        const connection = activeConnections.get(member.id);
+        if (connection?.readyState === WebSocket.OPEN) {
+          connection.send(JSON.stringify({ type: 'new_message', data: message }));
+          log(`Broadcasted message to user ${member.id}`, 'express');
+        }
+      });
+
+      res.json(message);
+    } catch (error) {
+      log(`Error creating message: ${error}`, 'express');
+      res.status(500).json({ message: 'Error creating message' });
+    }
   });
 
   return httpServer;

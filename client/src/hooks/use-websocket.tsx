@@ -20,22 +20,35 @@ export function useWebSocket() {
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+      console.log('WebSocket connected');
       setIsConnected(true);
     };
 
     ws.onclose = () => {
+      console.log('WebSocket disconnected');
       setIsConnected(false);
     };
 
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
     ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      setLastMessage(message);
+      try {
+        const message = JSON.parse(event.data);
+        console.log('WebSocket message received:', message);
+        setLastMessage(message);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
     };
 
     wsRef.current = ws;
 
     return () => {
-      ws.close();
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     };
   }, [user]);
 

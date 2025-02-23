@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
+import { Loader2 } from 'lucide-react';
 
 type MessageListProps = {
   users: User[];
@@ -12,7 +13,7 @@ type MessageListProps = {
 };
 
 export function MessageList({ users, conversationId }: MessageListProps) {
-  const { data: messages } = useQuery<Message[]>({
+  const { data: messages, isLoading } = useQuery<Message[]>({
     queryKey: ['/api/messages', conversationId],
     queryFn: async () => {
       const res = await fetch(`/api/messages?conversationId=${conversationId}`);
@@ -42,11 +43,12 @@ export function MessageList({ users, conversationId }: MessageListProps) {
           </audio>
         ) : null;
       case 'code':
+        const language = message.metadata?.language || 'text';
         return (
           <pre className="bg-muted p-4 rounded-lg overflow-x-auto">
             <code>{message.content}</code>
             <div className="text-xs text-muted-foreground mt-2">
-              Language: {message.metadata?.language || 'text'}
+              Language: {language}
             </div>
           </pre>
         );
@@ -57,6 +59,14 @@ export function MessageList({ users, conversationId }: MessageListProps) {
 
   const getSender = (senderId: number) =>
     users.find((u) => u.id === senderId)?.username || 'Unknown';
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-300px)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-[calc(100vh-300px)]">
@@ -86,7 +96,7 @@ export function MessageList({ users, conversationId }: MessageListProps) {
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-medium">{getSender(message.senderId)}</span>
                   <span className="text-xs opacity-70">
-                    {format(message.timestamp ? new Date(message.timestamp) : new Date(), 'HH:mm')}
+                    {format(new Date(message.timestamp), 'HH:mm')}
                   </span>
                 </div>
                 {renderMessageContent(message)}

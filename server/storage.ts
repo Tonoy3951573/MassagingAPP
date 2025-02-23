@@ -2,6 +2,7 @@ import { IStorage } from "./types";
 import { Message, User, InsertUser, Conversation, ConversationMember } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import { log } from "./vite";
 
 const MemoryStore = createMemoryStore(session);
 
@@ -52,6 +53,7 @@ export class MemStorage implements IStorage {
       lastSeen: new Date()
     };
     this.users.set(id, user);
+    log(`Created new user: ${user.username} (ID: ${user.id})`, 'storage');
     return user;
   }
 
@@ -68,6 +70,7 @@ export class MemStorage implements IStorage {
       createdAt: new Date()
     };
     this.conversations.set(id, conversation);
+    log(`Created new conversation: ${type} (ID: ${id})`, 'storage');
 
     // Add creator to conversation
     await this.addUserToConversation(creatorId, id);
@@ -83,37 +86,56 @@ export class MemStorage implements IStorage {
       .filter(member => member.conversationId === conversationId)
       .map(member => member.userId);
 
-    return memberIds.map(id => this.users.get(id)!).filter(Boolean);
+    const members = memberIds.map(id => this.users.get(id)!).filter(Boolean);
+    log(`Fetched members for conversation ${conversationId}: ${members.map(m => m.username).join(', ')}`, 'storage');
+    return members;
   }
 
   async addUserToConversation(userId: number, conversationId: number): Promise<void> {
     const id = this.currentMemberId++;
-    this.conversationMembers.set(id, {
+    const member: ConversationMember = {
       id,
       userId,
       conversationId,
       joinedAt: new Date()
-    });
+    };
+    this.conversationMembers.set(id, member);
+    log(`Added user ${userId} to conversation ${conversationId}`, 'storage');
   }
 
   async getUserConversations(userId: number): Promise<Conversation[]> {
+    // Get all conversation IDs where the user is a member
     const conversationIds = Array.from(this.conversationMembers.values())
       .filter(member => member.userId === userId)
       .map(member => member.conversationId);
 
-    return conversationIds.map(id => this.conversations.get(id)!).filter(Boolean);
+    // Get the actual conversations
+    const conversations = conversationIds
+      .map(id => this.conversations.get(id)!)
+      .filter(Boolean);
+
+    log(`Fetched conversations for user ${userId}: ${conversations.map(c => c.id).join(', ')}`, 'storage');
+    return conversations;
   }
 
   async getMessages(conversationId: number): Promise<Message[]> {
-    return Array.from(this.messages.values())
+    const messages = Array.from(this.messages.values())
       .filter(message => message.conversationId === conversationId)
-      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      .sort((a, b) => {
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return timeA - timeB;
+      });
+
+    log(`Fetched ${messages.length} messages for conversation ${conversationId}`, 'storage');
+    return messages;
   }
 
   async createMessage(message: Omit<Message, 'id'>): Promise<Message> {
     const id = this.currentMessageId++;
     const newMessage = { ...message, id };
     this.messages.set(id, newMessage);
+    log(`Created new message in conversation ${message.conversationId}: ${message.content?.slice(0, 50)}...`, 'storage');
     return newMessage;
   }
 
@@ -125,6 +147,7 @@ export class MemStorage implements IStorage {
         isActive,
         lastSeen: new Date()
       });
+      log(`Updated user ${userId} active status: ${isActive}`, 'storage');
     }
   }
 }

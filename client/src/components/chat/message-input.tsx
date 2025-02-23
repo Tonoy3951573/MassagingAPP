@@ -28,7 +28,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
         type,
         content,
         conversationId,
-        metadata,
+        metadata: metadata || {}
       });
 
       await res.json();
