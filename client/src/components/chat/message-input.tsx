@@ -150,7 +150,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
-            className="min-h-[100px] resize-none"
+            className="min-h-[100px] resize-none focus:ring-1 focus:ring-primary"
           />
           <div className="flex justify-between items-center">
             <div className="flex gap-2">
@@ -166,6 +166,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
                 title="Send image"
+                className="hover:bg-muted/50"
               >
                 <Image className="h-4 w-4" />
               </Button>
@@ -174,6 +175,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
                 size="icon"
                 onClick={() => setShowCodeEditor(true)}
                 title="Send code"
+                className="hover:bg-muted/50"
               >
                 <Code className="h-4 w-4" />
               </Button>
@@ -181,7 +183,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
                 variant="outline"
                 size="icon"
                 onClick={isRecording ? stopRecording : startRecording}
-                className={isRecording ? 'animate-pulse' : ''}
+                className={`hover:bg-muted/50 ${isRecording ? 'animate-pulse bg-red-100' : ''}`}
                 title={isRecording ? 'Stop recording' : 'Start recording'}
               >
                 {isRecording ? (
@@ -194,9 +196,9 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
             <Button
               onClick={() => handleSendMessage('text', message)}
               disabled={!message.trim()}
-              className="px-4"
+              className="px-4 gap-2"
             >
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="h-4 w-4" />
               Send
             </Button>
           </div>

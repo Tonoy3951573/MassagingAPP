@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { Message, MessageType, User } from '@shared/schema';
-import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { format } from 'date-fns';
@@ -23,7 +22,7 @@ const languageExtensions = {
 };
 
 export function MessageList({ users, conversationId }: MessageListProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { data: messages, isLoading } = useQuery<Message[]>({
     queryKey: ['/api/messages', conversationId],
     queryFn: async () => {
@@ -35,53 +34,62 @@ export function MessageList({ users, conversationId }: MessageListProps) {
 
   const { user: currentUser } = useAuth();
 
-  // Auto-scroll to bottom when new messages arrive
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const renderMessageContent = (message: Message) => {
     switch (message.type as MessageType) {
       case 'text':
-        return <p className="whitespace-pre-wrap break-words">{message.content}</p>;
+        return (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">
+            {message.content}
+          </p>
+        );
       case 'image':
         return message.content ? (
-          <img
-            src={message.content}
-            alt="Shared image"
-            className="max-w-sm rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
-            loading="lazy"
-          />
+          <div className="relative group">
+            <img
+              src={message.content}
+              alt="Shared image"
+              className="max-w-sm rounded-lg transition-transform transform hover:scale-[1.02]"
+              loading="lazy"
+            />
+          </div>
         ) : null;
       case 'voice':
         return message.content ? (
-          <audio controls className="w-full max-w-sm">
-            <source src={message.content} type="audio/wav" />
-          </audio>
+          <div className="w-full max-w-sm bg-card/50 rounded-lg p-2">
+            <audio controls className="w-full">
+              <source src={message.content} type="audio/wav" />
+              Your browser does not support the audio element.
+            </audio>
+          </div>
         ) : null;
       case 'code':
         const language = (message.metadata?.language || 'text') as keyof typeof languageExtensions;
         return (
           <div className="space-y-2 w-full max-w-2xl">
-            <CodeMirror
-              value={message.content || ''}
-              height="auto"
-              minHeight="50px"
-              maxHeight="400px"
-              readOnly
-              basicSetup={{
-                lineNumbers: true,
-                highlightActiveLine: false,
-                foldGutter: false,
-              }}
-              theme="light"
-              extensions={[languageExtensions[language]]}
-              className="border rounded-md overflow-hidden text-sm"
-            />
-            <div className="text-xs text-muted-foreground">
-              Language: {message.metadata?.language || 'text'}
+            <div className="bg-card/50 rounded-lg overflow-hidden">
+              <div className="bg-muted/50 px-4 py-2 text-xs font-mono flex items-center justify-between">
+                <span>{message.metadata?.language || 'text'}</span>
+              </div>
+              <CodeMirror
+                value={message.content || ''}
+                height="auto"
+                minHeight="50px"
+                maxHeight="400px"
+                readOnly
+                basicSetup={{
+                  lineNumbers: true,
+                  highlightActiveLine: false,
+                  foldGutter: false,
+                }}
+                theme="light"
+                extensions={[languageExtensions[language]]}
+                className="text-sm"
+              />
             </div>
           </div>
         );
@@ -95,52 +103,68 @@ export function MessageList({ users, conversationId }: MessageListProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-300px)]">
+      <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <ScrollArea 
-      ref={scrollRef}
-      className="h-[calc(100vh-300px)] bg-gradient-to-b from-background to-muted relative"
-    >
-      <div className="space-y-6 p-6">
-        {messages?.map((message) => (
-          <div
-            key={message.id}
-            className={`flex gap-4 ${
-              message.senderId === currentUser?.id ? 'justify-end' : 'justify-start'
-            } animate-in fade-in-0 slide-in-from-bottom-1`}
-          >
-            {message.senderId !== currentUser?.id && (
-              <Avatar className="w-8 h-8">
-                <AvatarFallback className="text-xs">
-                  {getSender(message.senderId).charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-            )}
-            <div
-              className={`max-w-[80%] rounded-lg p-4 shadow-sm ${
-                message.senderId === currentUser?.id
-                  ? 'bg-primary text-primary-foreground rounded-br-none'
-                  : 'bg-card rounded-bl-none'
-              }`}
-            >
-              <div className="flex justify-between items-center gap-4 mb-2">
-                <span className="font-medium text-sm">
-                  {getSender(message.senderId)}
-                </span>
-                <span className="text-xs opacity-70">
-                  {format(new Date(message.timestamp), 'HH:mm')}
-                </span>
+    <div className="h-full overflow-hidden">
+      <ScrollArea className="h-full px-6">
+        <div className="space-y-6 py-6">
+          {messages?.map((message, index) => {
+            const isCurrentUser = message.senderId === currentUser?.id;
+            const showAvatar = !isCurrentUser && (!messages[index - 1] || messages[index - 1].senderId !== message.senderId);
+
+            return (
+              <div
+                key={message.id}
+                className={`flex gap-3 ${
+                  isCurrentUser ? 'justify-end' : 'justify-start'
+                } animate-in slide-in-from-bottom-2 fade-in duration-200`}
+              >
+                {showAvatar && (
+                  <Avatar className="h-8 w-8 mt-1">
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                      {getSender(message.senderId).charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                {!showAvatar && !isCurrentUser && <div className="w-8" />}
+                <div
+                  className={`group relative max-w-[85%] ${
+                    isCurrentUser ? 'items-end' : 'items-start'
+                  }`}
+                >
+                  <div
+                    className={`rounded-2xl px-4 py-2.5 shadow-sm ${
+                      isCurrentUser
+                        ? 'bg-primary text-primary-foreground rounded-br-sm'
+                        : 'bg-muted/80 rounded-bl-sm'
+                    }`}
+                  >
+                    {!isCurrentUser && (
+                      <div className="mb-1 text-sm font-medium">
+                        {getSender(message.senderId)}
+                      </div>
+                    )}
+                    {renderMessageContent(message)}
+                  </div>
+                  <div
+                    className={`text-xs text-muted-foreground mt-1 ${
+                      isCurrentUser ? 'text-right' : 'text-left'
+                    }`}
+                  >
+                    {format(new Date(message.timestamp), 'HH:mm')}
+                  </div>
+                </div>
               </div>
-              {renderMessageContent(message)}
-            </div>
-          </div>
-        ))}
-      </div>
-    </ScrollArea>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
