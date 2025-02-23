@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useWebSocket } from '@/hooks/use-websocket';
 import { MessageList } from '@/components/chat/message-list';
@@ -6,7 +6,7 @@ import { MessageInput } from '@/components/chat/message-input';
 import { UserList } from '@/components/chat/user-list';
 import { ConversationList } from '@/components/chat/conversation-list';
 import { Button } from '@/components/ui/button';
-import { LogOut } from 'lucide-react';
+import { LogOut, Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { User, Conversation } from '@shared/schema';
 
@@ -16,7 +16,7 @@ export default function ChatPage() {
   const queryClient = useQueryClient();
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
-  const { data: users } = useQuery<User[]>({
+  const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
     queryKey: ['/api/users'],
   });
 
@@ -25,6 +25,14 @@ export default function ChatPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/messages'] });
     }
   }, [lastMessage, queryClient]);
+
+  if (isLoadingUsers) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

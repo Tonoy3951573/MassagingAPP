@@ -7,7 +7,7 @@ import multer from "multer";
 import { insertMessageSchema } from "@shared/schema";
 import { parse as parseCookie } from "cookie";
 import signature from "cookie-signature";
-import expressSession from "express-session";
+import { log } from "./vite";
 
 const upload = multer({ 
   limits: {
@@ -26,57 +26,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Authenticate WebSocket connections using session
   wss.on('connection', async (ws, req) => {
     try {
+      log('New WebSocket connection attempt', 'websocket');
+
       if (!req.headers.cookie) {
+        log('No cookie found in WebSocket request', 'websocket');
         ws.close();
         return;
       }
 
       const cookies = parseCookie(req.headers.cookie);
       const signedSessionId = cookies['connect.sid'];
+      log(`Found session cookie: ${signedSessionId?.slice(0, 10)}...`, 'websocket');
 
       if (!signedSessionId || !signedSessionId.startsWith('s:')) {
+        log('Invalid session cookie format', 'websocket');
         ws.close();
         return;
       }
 
       const sessionId = signature.unsign(signedSessionId.slice(2), process.env.SESSION_SECRET!);
+      log(`Unsigned session ID: ${sessionId?.slice(0, 10)}...`, 'websocket');
 
       if (!sessionId) {
+        log('Failed to unsign session cookie', 'websocket');
         ws.close();
         return;
       }
 
       const session: any = await new Promise((resolve) => {
         storage.sessionStore.get(sessionId, (err, session) => {
+          if (err) log(`Session retrieval error: ${err}`, 'websocket');
           resolve(session);
         });
       });
 
+      log(`Retrieved session: ${JSON.stringify(session?.passport)}`, 'websocket');
+
       if (!session?.passport?.user) {
+        log('No user found in session', 'websocket');
         ws.close();
         return;
       }
 
       const user = await storage.getUser(session.passport.user);
       if (!user) {
+        log(`User not found for ID: ${session.passport.user}`, 'websocket');
         ws.close();
         return;
       }
 
+      log(`WebSocket authenticated for user: ${user.id}`, 'websocket');
       activeConnections.set(user.id, ws);
-      storage.setUserActive(user.id, true);
+      await storage.setUserActive(user.id, true);
 
-      ws.on('close', () => {
+      ws.on('close', async () => {
+        log(`WebSocket closed for user: ${user.id}`, 'websocket');
         activeConnections.delete(user.id);
-        storage.setUserActive(user.id, false);
+        await storage.setUserActive(user.id, false);
       });
 
+      // Send initial connection success message
+      ws.send(JSON.stringify({ type: 'connected', data: { userId: user.id } }));
+
     } catch (error) {
-      console.error('WebSocket connection error:', error);
+      log(`WebSocket connection error: ${error}`, 'websocket');
       ws.close();
     }
   });
 
+  // Rest of your routes...
   app.get("/api/conversations", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const conversations = await storage.getUserConversations(req.user.id);

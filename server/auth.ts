@@ -6,6 +6,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
+import { log } from "./vite";
 
 declare global {
   namespace Express {
@@ -29,11 +30,20 @@ async function comparePasswords(supplied: string, stored: string) {
 }
 
 export function setupAuth(app: Express) {
+  if (!process.env.SESSION_SECRET) {
+    throw new Error("SESSION_SECRET environment variable is required");
+  }
+
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET!,
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
   };
 
   app.set("trust proxy", 1);
@@ -43,51 +53,106 @@ export function setupAuth(app: Express) {
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
-      const user = await storage.getUserByUsername(username);
-      if (!user || !(await comparePasswords(password, user.password))) {
-        return done(null, false);
-      } else {
+      try {
+        const user = await storage.getUserByUsername(username);
+        log(`Login attempt for user: ${username}, found: ${!!user}`, "auth");
+        if (!user || !(await comparePasswords(password, user.password))) {
+          return done(null, false, { message: "Invalid username or password" });
+        }
         return done(null, user);
+      } catch (error) {
+        log(`Login error: ${error}`, "auth");
+        return done(error);
       }
     }),
   );
 
-  passport.serializeUser((user, done) => done(null, user.id));
+  passport.serializeUser((user, done) => {
+    log(`Serializing user: ${user.id}`, "auth");
+    done(null, user.id);
+  });
+
   passport.deserializeUser(async (id: number, done) => {
-    const user = await storage.getUser(id);
-    done(null, user);
+    try {
+      const user = await storage.getUser(id);
+      log(`Deserializing user ${id}, found: ${!!user}`, "auth");
+      if (!user) {
+        return done(null, false);
+      }
+      done(null, user);
+    } catch (error) {
+      log(`Deserialize error: ${error}`, "auth");
+      done(error);
+    }
   });
 
   app.post("/api/register", async (req, res, next) => {
-    const existingUser = await storage.getUserByUsername(req.body.username);
-    if (existingUser) {
-      return res.status(400).send("Username already exists");
+    try {
+      log(`Registration attempt for username: ${req.body.username}`, "auth");
+      const existingUser = await storage.getUserByUsername(req.body.username);
+      if (existingUser) {
+        log(`Registration failed - username exists: ${req.body.username}`, "auth");
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const user = await storage.createUser({
+        ...req.body,
+        password: await hashPassword(req.body.password),
+      });
+
+      log(`User created successfully: ${user.id}`, "auth");
+      req.login(user, (err) => {
+        if (err) {
+          log(`Login after registration failed: ${err}`, "auth");
+          return next(err);
+        }
+        log(`Login after registration successful: ${user.id}`, "auth");
+        res.status(201).json(user);
+      });
+    } catch (error) {
+      log(`Registration error: ${error}`, "auth");
+      next(error);
     }
-
-    const user = await storage.createUser({
-      ...req.body,
-      password: await hashPassword(req.body.password),
-    });
-
-    req.login(user, (err) => {
-      if (err) return next(err);
-      res.status(201).json(user);
-    });
   });
 
-  app.post("/api/login", passport.authenticate("local"), (req, res) => {
-    res.status(200).json(req.user);
+  app.post("/api/login", (req, res, next) => {
+    passport.authenticate("local", (err, user, info) => {
+      if (err) {
+        log(`Login error: ${err}`, "auth");
+        return next(err);
+      }
+      if (!user) {
+        log(`Login failed: ${info?.message}`, "auth");
+        return res.status(401).json({ message: info?.message || "Authentication failed" });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          log(`Session creation error: ${err}`, "auth");
+          return next(err);
+        }
+        log(`Login successful: ${user.id}`, "auth");
+        res.json(user);
+      });
+    })(req, res, next);
   });
 
   app.post("/api/logout", (req, res, next) => {
+    const userId = req.user?.id;
     req.logout((err) => {
-      if (err) return next(err);
+      if (err) {
+        log(`Logout error: ${err}`, "auth");
+        return next(err);
+      }
+      log(`Logout successful: ${userId}`, "auth");
       res.sendStatus(200);
     });
   });
 
   app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
+    log(`Auth check - isAuthenticated: ${req.isAuthenticated()}, user: ${req.user?.id}`, "auth");
+    if (!req.isAuthenticated()) {
+      return res.sendStatus(401);
+    }
     res.json(req.user);
   });
 }
