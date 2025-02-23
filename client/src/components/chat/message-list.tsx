@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Message, MessageType, User } from '@shared/schema';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { format } from 'date-fns';
@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
+import { useEffect, useRef } from 'react';
 
 type MessageListProps = {
   users: User[];
@@ -22,6 +23,7 @@ const languageExtensions = {
 };
 
 export function MessageList({ users, conversationId }: MessageListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const { data: messages, isLoading } = useQuery<Message[]>({
     queryKey: ['/api/messages', conversationId],
     queryFn: async () => {
@@ -33,16 +35,24 @@ export function MessageList({ users, conversationId }: MessageListProps) {
 
   const { user: currentUser } = useAuth();
 
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   const renderMessageContent = (message: Message) => {
     switch (message.type as MessageType) {
       case 'text':
-        return <p className="whitespace-pre-wrap">{message.content}</p>;
+        return <p className="whitespace-pre-wrap break-words">{message.content}</p>;
       case 'image':
         return message.content ? (
           <img
             src={message.content}
             alt="Shared image"
-            className="max-w-sm rounded-lg"
+            className="max-w-sm rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+            loading="lazy"
           />
         ) : null;
       case 'voice':
@@ -52,38 +62,29 @@ export function MessageList({ users, conversationId }: MessageListProps) {
           </audio>
         ) : null;
       case 'code':
-        try {
-          const language = (message.metadata?.language || 'text') as keyof typeof languageExtensions;
-          console.log('Rendering code message:', { content: message.content, language, metadata: message.metadata });
-
-          return (
-            <div className="space-y-2">
-              <CodeMirror
-                value={message.content || ''}
-                height="200px"
-                readOnly
-                theme="light"
-                extensions={[languageExtensions[language]]}
-                className="border rounded-md"
-              />
-              <div className="text-xs text-muted-foreground">
-                Language: {message.metadata?.language || 'text'}
-              </div>
+        const language = (message.metadata?.language || 'text') as keyof typeof languageExtensions;
+        return (
+          <div className="space-y-2 w-full max-w-2xl">
+            <CodeMirror
+              value={message.content || ''}
+              height="auto"
+              minHeight="50px"
+              maxHeight="400px"
+              readOnly
+              basicSetup={{
+                lineNumbers: true,
+                highlightActiveLine: false,
+                foldGutter: false,
+              }}
+              theme="light"
+              extensions={[languageExtensions[language]]}
+              className="border rounded-md overflow-hidden text-sm"
+            />
+            <div className="text-xs text-muted-foreground">
+              Language: {message.metadata?.language || 'text'}
             </div>
-          );
-        } catch (error) {
-          console.error('Error rendering code message:', error);
-          return (
-            <div className="space-y-2">
-              <pre className="bg-muted p-4 rounded-lg overflow-x-auto">
-                <code>{message.content}</code>
-              </pre>
-              <div className="text-xs text-muted-foreground">
-                Failed to render with syntax highlighting
-              </div>
-            </div>
-          );
-        }
+          </div>
+        );
       default:
         return null;
     }
@@ -101,30 +102,33 @@ export function MessageList({ users, conversationId }: MessageListProps) {
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-300px)] bg-gradient-to-b from-background to-muted">
-      <div className="space-y-4 p-4">
+    <ScrollArea 
+      ref={scrollRef}
+      className="h-[calc(100vh-300px)] bg-gradient-to-b from-background to-muted relative"
+    >
+      <div className="space-y-6 p-6">
         {messages?.map((message) => (
           <div
             key={message.id}
             className={`flex gap-4 ${
               message.senderId === currentUser?.id ? 'justify-end' : 'justify-start'
-            }`}
+            } animate-in fade-in-0 slide-in-from-bottom-1`}
           >
             {message.senderId !== currentUser?.id && (
-              <Avatar>
-                <AvatarFallback>
+              <Avatar className="w-8 h-8">
+                <AvatarFallback className="text-xs">
                   {getSender(message.senderId).charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             )}
             <div
-              className={`max-w-[70%] rounded-lg p-4 ${
+              className={`max-w-[80%] rounded-lg p-4 shadow-sm ${
                 message.senderId === currentUser?.id
                   ? 'bg-primary text-primary-foreground rounded-br-none'
                   : 'bg-card rounded-bl-none'
               }`}
             >
-              <div className="flex justify-between items-center mb-2">
+              <div className="flex justify-between items-center gap-4 mb-2">
                 <span className="font-medium text-sm">
                   {getSender(message.senderId)}
                 </span>

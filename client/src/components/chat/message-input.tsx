@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { Image, Code, Mic, Send, StopCircle } from 'lucide-react';
+import { Image, Code, Mic, Send, StopCircle, X } from 'lucide-react';
 import { CodeEditor } from './code-editor';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
@@ -19,6 +19,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
   const { toast } = useToast();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSendMessage = async (type: 'text' | 'image' | 'voice' | 'code', content: string, metadata?: any) => {
     if (!content.trim() && type === 'text') return;
@@ -31,9 +32,8 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
         metadata: metadata || {}
       };
 
-      console.log('Sending message:', messageData); // Debug log
-
       const res = await apiRequest('POST', '/api/messages', messageData);
+      if (!res.ok) throw new Error('Failed to send message');
       await res.json();
       setMessage('');
       onMessageSent();
@@ -46,14 +46,31 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
     }
   };
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      toast({
+        title: 'File too large',
+        description: 'Please select an image under 5MB',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
       const reader = new FileReader();
       reader.onloadend = () => {
         handleSendMessage('image', reader.result as string);
       };
       reader.readAsDataURL(file);
+    } catch (error) {
+      toast({
+        title: 'Error uploading image',
+        description: 'Failed to process the image',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -74,6 +91,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
           handleSendMessage('voice', reader.result as string);
         };
         reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -95,25 +113,44 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage('text', message);
+    }
+  };
+
   return (
-    <Card className="p-4">
+    <Card className="p-4 border-t">
       {showCodeEditor ? (
-        <CodeEditor
-          onSubmit={(code, language) => {
-            const metadata = { language };
-            console.log('Sending code with metadata:', { code, metadata }); // Debug log
-            handleSendMessage('code', code, metadata);
-            setShowCodeEditor(false);
-          }}
-          onCancel={() => setShowCodeEditor(false)}
-        />
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-medium">Code Editor</h3>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowCodeEditor(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <CodeEditor
+            onSubmit={(code, language) => {
+              handleSendMessage('code', code, { language });
+              setShowCodeEditor(false);
+            }}
+            onCancel={() => setShowCodeEditor(false)}
+          />
+        </div>
       ) : (
         <div className="space-y-4">
           <Textarea
+            ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your message..."
-            className="min-h-[100px]"
+            onKeyDown={handleKeyPress}
+            placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+            className="min-h-[100px] resize-none"
           />
           <div className="flex justify-between items-center">
             <div className="flex gap-2">
@@ -128,6 +165,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
                 variant="outline"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
+                title="Send image"
               >
                 <Image className="h-4 w-4" />
               </Button>
@@ -135,6 +173,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
                 variant="outline"
                 size="icon"
                 onClick={() => setShowCodeEditor(true)}
+                title="Send code"
               >
                 <Code className="h-4 w-4" />
               </Button>
@@ -142,6 +181,8 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
                 variant="outline"
                 size="icon"
                 onClick={isRecording ? stopRecording : startRecording}
+                className={isRecording ? 'animate-pulse' : ''}
+                title={isRecording ? 'Stop recording' : 'Start recording'}
               >
                 {isRecording ? (
                   <StopCircle className="h-4 w-4 text-red-500" />
@@ -153,6 +194,7 @@ export function MessageInput({ onMessageSent, conversationId }: MessageInputProp
             <Button
               onClick={() => handleSendMessage('text', message)}
               disabled={!message.trim()}
+              className="px-4"
             >
               <Send className="h-4 w-4 mr-2" />
               Send
